@@ -1,0 +1,14 @@
+{
+    "type": "module",
+    "scripts": {
+        "build:contract": "cd ./contract && RUSTFLAGS='-C link-arg=--enable-bulk-memory' cargo near build non-reproducible-wasm",
+        "test": "yarn build:contract && node scripts/test.js",
+        "test:nobuild": "node scripts/test.js"
+    },
+    "devDependencies": {
+        "dotenv": "^16.4.7",
+        "near-api-js": "^5.0.1",
+        "near-seed-phrase": "^0.2.1"
+    },
+    "packageManager": "yarn@4.9.1"
+}
