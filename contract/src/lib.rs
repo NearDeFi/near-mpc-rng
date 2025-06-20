@@ -17,8 +17,7 @@ use utils::vec_to_fixed;
 #[derive(Clone)]
 pub struct CandidateRNG {
     commit_hash: String,
-    random_seed_1: [u8; 32],
-    random_seed_2: [u8; 32],
+    random_seed: [u8; 32],
     r_bytes: [u8; 32],
     s_bytes: [u8; 32],
 }
@@ -43,20 +42,19 @@ impl Contract {
 
     pub fn commit(&mut self, commit_hash: String) -> Promise {
         let account_id = env::predecessor_account_id();
-        let random_seed_1 = env::random_seed_array();
+        let random_seed = env::random_seed_array();
 
         self.candidate_by_account_id.insert(
             account_id.clone(),
             CandidateRNG {
-                random_seed_1,
-                random_seed_2: ZERO_PAYLOAD,
+                random_seed,
                 r_bytes: ZERO_PAYLOAD,
                 s_bytes: ZERO_PAYLOAD,
                 commit_hash: commit_hash.clone(),
             },
         );
 
-        ecdsa::get_sig(random_seed_1, commit_hash, 0).then(
+        ecdsa::get_sig(random_seed, commit_hash, 0).then(
             external::rng_contract::ext(env::current_account_id())
                 .with_static_gas(CALLBACK_GAS)
                 .sign_callback(account_id),
@@ -90,8 +88,7 @@ impl Contract {
 
                 let new_candidate = CandidateRNG {
                     commit_hash: candidate.commit_hash.clone(),
-                    random_seed_1: candidate.random_seed_1,
-                    random_seed_2: env::random_seed_array(),
+                    random_seed: candidate.random_seed,
                     r_bytes,
                     s_bytes,
                 };
@@ -116,7 +113,7 @@ impl Contract {
             .get(&account_id)
             .expect("cannot find candidate");
 
-        require!(candidate.random_seed_2 != ZERO_PAYLOAD, "not ready");
+        require!(candidate.r_bytes != ZERO_PAYLOAD, "not ready");
 
         require!(
             encode(env::sha256(commit_value.as_bytes())) == candidate.commit_hash,
@@ -125,8 +122,7 @@ impl Contract {
 
         let rng: String = encode(env::sha256(
             &[
-                candidate.random_seed_1,
-                candidate.random_seed_2,
+                candidate.random_seed,
                 candidate.r_bytes,
                 candidate.s_bytes,
                 vec_to_fixed(format!("{:0>32}", commit_value).as_bytes().to_vec()),

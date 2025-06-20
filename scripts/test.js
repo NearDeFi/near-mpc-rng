@@ -78,7 +78,7 @@ const { provider } = connection;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export const getAccount = (id = _accountId) => new Account(connection, id);
 
-const DEPLOY = false;
+const DEPLOY = true;
 
 async function main() {
     if (DEPLOY) {
@@ -125,7 +125,7 @@ async function main() {
             contractId,
             methodName: 'init',
             args: {
-                owner_id: accountId,
+                owner_id: _accountId,
             },
             gas: GAS,
         });
