@@ -38,6 +38,7 @@ export const contractId = _contractId;
 const CONTRACT_PATH = './contract/target/near/contract.wasm';
 const FUNDING_AMOUNT = parseNearAmount('5');
 const GAS = BigInt('300000000000000');
+const RANDOM_GAS = BigInt('20000000000000');
 
 const COMMIT_HASH =
     '73475cb40a568e8da8a045ced110137e159f890ac4da883b6b17dc651b3a8049';
@@ -134,36 +135,15 @@ async function main() {
         await sleep(1000);
     }
 
-    const commitRes = await account.functionCall({
+    const randomRes = await account.functionCall({
         contractId,
-        methodName: 'commit',
-        args: {
-            commit_hash: COMMIT_HASH,
-        },
-        gas: GAS,
+        methodName: 'random',
+        args: {},
+        attachedDeposit: parseNearAmount('0.001001'), // must be greater than 0.001 NEAR
+        gas: RANDOM_GAS,
     });
 
-    console.log('commitRes', atob(commitRes.status.SuccessValue) === 'true');
-    await sleep(1000);
-
-    const revealRes = await account.functionCall({
-        contractId,
-        methodName: 'reveal',
-        args: {
-            commit_value: COMMIT_VALUE,
-        },
-        gas: GAS,
-    });
-
-    console.log(
-        'revealRes',
-        atob(revealRes.status.SuccessValue).replaceAll('"', '').length === 64,
-    );
-    console.log(
-        'revealRes',
-        atob(revealRes.status.SuccessValue).replaceAll('"', ''),
-    );
-    await sleep(1000);
+    console.log('randomRes', atob(randomRes.status.SuccessValue));
 }
 
 main();

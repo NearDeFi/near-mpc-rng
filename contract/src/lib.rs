@@ -5,8 +5,7 @@ use near_sdk::{
 };
 use omni_transaction::signer::types::SignatureResponse;
 
-const CALLBACK_GAS: Gas = Gas::from_tgas(50);
-const ZERO_PAYLOAD: [u8; 32] = [0; 32];
+const CALLBACK_GAS: Gas = Gas::from_tgas(5);
 
 mod ecdsa;
 mod external;
@@ -16,10 +15,7 @@ use utils::vec_to_fixed;
 #[near(serializers = [json, borsh])]
 #[derive(Clone)]
 pub struct CandidateRNG {
-    commit_hash: String,
     random_seed: [u8; 32],
-    r_bytes: [u8; 32],
-    s_bytes: [u8; 32],
 }
 
 #[near(contract_state)]
@@ -40,21 +36,22 @@ impl Contract {
         }
     }
 
-    pub fn commit(&mut self, commit_hash: String) -> Promise {
+    #[payable]
+    pub fn random(&mut self) -> Promise {
+        let deposit = env::attached_deposit();
+        require!(
+            deposit > NearToken::from_millinear(1),
+            "Deposit must be greater than 0.001 NEAR"
+        );
+        env::log_str(&format!("Deposited {}", deposit));
+
         let account_id = env::predecessor_account_id();
         let random_seed = env::random_seed_array();
 
-        self.candidate_by_account_id.insert(
-            account_id.clone(),
-            CandidateRNG {
-                random_seed,
-                r_bytes: ZERO_PAYLOAD,
-                s_bytes: ZERO_PAYLOAD,
-                commit_hash: commit_hash.clone(),
-            },
-        );
+        self.candidate_by_account_id
+            .insert(account_id.clone(), CandidateRNG { random_seed });
 
-        ecdsa::get_sig(random_seed, commit_hash, 0).then(
+        ecdsa::get_sig(random_seed, account_id.to_string(), 0).then(
             external::rng_contract::ext(env::current_account_id())
                 .with_static_gas(CALLBACK_GAS)
                 .sign_callback(account_id),
@@ -66,7 +63,7 @@ impl Contract {
         &mut self,
         #[callback_result] call_result: Result<SignatureResponse, PromiseError>,
         account_id: AccountId,
-    ) -> bool {
+    ) -> String {
         match call_result {
             Ok(signature_response) => {
                 // extract r and s from the signature response
@@ -86,52 +83,18 @@ impl Contract {
                     .get(&account_id)
                     .expect("cannot find candidate");
 
-                let new_candidate = CandidateRNG {
-                    commit_hash: candidate.commit_hash.clone(),
-                    random_seed: candidate.random_seed,
-                    r_bytes,
-                    s_bytes,
-                };
+                let rng: String = encode(env::sha256(
+                    &[candidate.random_seed, r_bytes, s_bytes].concat(),
+                ));
 
-                self.candidate_by_account_id
-                    .insert(account_id, new_candidate);
+                self.candidate_by_account_id.remove(&account_id);
 
-                // ready for reveal
-                true
+                rng
             }
             Err(error) => {
                 env::log_str(&format!("callback failed with error: {:?}", error));
-                false
+                "".to_owned()
             }
         }
-    }
-
-    pub fn reveal(&mut self, commit_value: String) -> String {
-        let account_id = env::predecessor_account_id();
-        let candidate = self
-            .candidate_by_account_id
-            .get(&account_id)
-            .expect("cannot find candidate");
-
-        require!(candidate.r_bytes != ZERO_PAYLOAD, "not ready");
-
-        require!(
-            encode(env::sha256(commit_value.as_bytes())) == candidate.commit_hash,
-            "commit value does not hash to candidate commit_hash"
-        );
-
-        let rng: String = encode(env::sha256(
-            &[
-                candidate.random_seed,
-                candidate.r_bytes,
-                candidate.s_bytes,
-                vec_to_fixed(format!("{:0>32}", commit_value).as_bytes().to_vec()),
-            ]
-            .concat(),
-        ));
-
-        self.candidate_by_account_id.remove(&account_id);
-
-        rng
     }
 }
